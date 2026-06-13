@@ -1,8 +1,22 @@
-streamlit
-pandas
-numpy
-scipy
-statsmodels
-plotly
-openpyxl
-scikit-learn
+# Core Streamlit App Infrastructure
+streamlit>=1.30.0
+
+# Data Processing & Manipulation backends
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+
+# Scientific & Advanced Statistical Frameworks
+scipy>=1.10.0
+statsmodels>=0.14.0
+scikit-learn>=1.2.0
+
+# Interactive Data Visualization
+plotly>=5.15.0
+
+# Phase 6: Panel Data Modeling
+linearmodels>=5.3
+
+# Phase 7: Automated Document Export Architectures
+reportlab>=4.0.0
+python-docx>=1.0.0
