@@ -2,13 +2,10 @@
 Advanced Data Analysis Studio
 =============================
 A professional-grade Streamlit application for exploratory data analysis,
-statistical testing, regression modeling, and interactive visualization.
+statistical testing, regression modeling, econometrics, and interactive visualization.
 
 Run with:
     streamlit run advanced_data_analysis_app.py
-
-Required packages:
-    pip install streamlit pandas numpy scipy statsmodels plotly openpyxl scikit-learn
 """
 
 import streamlit as st
@@ -21,10 +18,41 @@ import plotly.graph_objects as go
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.outliers_influence import variance_inflation_factor
+from statsmodels.tsa.stattools import adfuller, kpss, grangercausalitytests
+from statsmodels.stats.diagnostic import het_breuschpagan, acorr_breusch_godfrey
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+import math
+import io
+import warnings
+
+# Phase 6 & 7 Additional Imports
+try:
+    from linearmodels.panel import PanelOLS, RandomEffects
+    import linearmodels.panel as lmp
+    PANEL_AVAILABLE = True
+except ImportError:
+    PANEL_AVAILABLE = False
+
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+
+try:
+    import docx
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+warnings.filterwarnings("ignore")
 
 # ------------------------------------------------------------------
 # PAGE CONFIG
@@ -40,110 +68,57 @@ st.markdown(
     """
     <style>
     /* Overall page */
-    .stApp {
-        background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%);
-    }
+    .stApp { background: linear-gradient(180deg, #f7f9fc 0%, #eef2f7 100%); }
 
     /* Header banner */
     .header-banner {
         background: linear-gradient(135deg, #1f4e79 0%, #2e75b6 60%, #4aa3df 100%);
-        padding: 28px 36px;
-        border-radius: 16px;
-        color: white;
-        box-shadow: 0 8px 24px rgba(31, 78, 121, 0.25);
-        margin-bottom: 6px;
+        padding: 28px 36px; border-radius: 16px; color: white;
+        box-shadow: 0 8px 24px rgba(31, 78, 121, 0.25); margin-bottom: 6px;
     }
-    .header-banner h1 {
-        font-size: 2.4rem;
-        font-weight: 800;
-        margin: 0;
-        letter-spacing: 0.5px;
-    }
-    .header-banner p {
-        font-size: 1.05rem;
-        margin: 6px 0 0 0;
-        opacity: 0.92;
-    }
+    .header-banner h1 { font-size: 2.4rem; font-weight: 800; margin: 0; letter-spacing: 0.5px; }
+    .header-banner p { font-size: 1.05rem; margin: 6px 0 0 0; opacity: 0.92; }
     .header-badges span {
-        display: inline-block;
-        background: rgba(255,255,255,0.15);
-        border: 1px solid rgba(255,255,255,0.35);
-        border-radius: 20px;
-        padding: 4px 14px;
-        margin: 10px 6px 0 0;
-        font-size: 0.8rem;
-        font-weight: 600;
-        letter-spacing: 0.3px;
+        display: inline-block; background: rgba(255,255,255,0.15);
+        border: 1px solid rgba(255,255,255,0.35); border-radius: 20px;
+        padding: 4px 14px; margin: 10px 6px 0 0; font-size: 0.8rem;
+        font-weight: 600; letter-spacing: 0.3px;
     }
 
     /* Metric cards */
     [data-testid="stMetric"] {
-        background-color: #ffffff;
-        border: 1px solid #e3e8ef;
-        padding: 16px 12px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        background-color: #ffffff; border: 1px solid #e3e8ef;
+        padding: 16px 12px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
     }
-    [data-testid="stMetricLabel"] {
-        font-weight: 600;
-        color: #5a6b7d;
-    }
-    [data-testid="stMetricValue"] {
-        color: #1f4e79;
-        font-weight: 800;
-    }
+    [data-testid="stMetricLabel"] { font-weight: 600; color: #5a6b7d; }
+    [data-testid="stMetricValue"] { color: #1f4e79; font-weight: 800; }
 
     /* Sidebar */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1f4e79 0%, #173a5e 100%);
-    }
-    section[data-testid="stSidebar"] * {
-        color: #f0f4f8 !important;
-    }
+    section[data-testid="stSidebar"] { background: linear-gradient(180deg, #1f4e79 0%, #173a5e 100%); }
+    section[data-testid="stSidebar"] * { color: #f0f4f8 !important; }
     section[data-testid="stSidebar"] .stRadio label,
     section[data-testid="stSidebar"] .stSelectbox label,
-    section[data-testid="stSidebar"] .stSlider label {
-        color: #d8e3ee !important;
-    }
+    section[data-testid="stSidebar"] .stSlider label { color: #d8e3ee !important; }
 
     /* Section headers */
-    h2, h3 {
-        color: #1f4e79 !important;
-        font-weight: 700;
-    }
-
-    /* Dataframes */
-    [data-testid="stDataFrame"] {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
+    h2, h3 { color: #1f4e79 !important; font-weight: 700; }
+    [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
 
     /* Buttons */
     .stButton>button, .stDownloadButton>button {
-        background: linear-gradient(135deg, #2e75b6, #1f4e79);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.5em 1.2em;
-        font-weight: 600;
-        transition: all 0.2s ease;
+        background: linear-gradient(135deg, #2e75b6, #1f4e79); color: white;
+        border: none; border-radius: 8px; padding: 0.5em 1.2em;
+        font-weight: 600; transition: all 0.2s ease;
     }
     .stButton>button:hover, .stDownloadButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(31, 78, 121, 0.35);
+        transform: translateY(-1px); box-shadow: 0 4px 12px rgba(31, 78, 121, 0.35);
     }
 
     /* Footer */
     .footer-box {
-        text-align: center;
-        padding: 18px;
-        margin-top: 24px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #1f4e79, #2e75b6);
-        color: #eaf2fb;
-        font-size: 0.85rem;
-        box-shadow: 0 4px 14px rgba(31,78,121,0.25);
+        text-align: center; padding: 18px; margin-top: 24px; border-radius: 12px;
+        background: linear-gradient(135deg, #1f4e79, #2e75b6); color: #eaf2fb;
+        font-size: 0.85rem; box-shadow: 0 4px 14px rgba(31,78,121,0.25);
     }
     .footer-box b { color: #ffffff; }
     </style>
@@ -195,19 +170,18 @@ def explain(text):
         unsafe_allow_html=True,
     )
 
-
 st.markdown(
     """
     <div class="header-banner">
         <h1>📊 Advanced Data Analysis Studio</h1>
-        <p>Enterprise-grade exploratory analysis, statistical testing, regression, clustering and visualization — all in one workspace.</p>
+        <p>Enterprise-grade exploratory analysis, statistical testing, regression, econometrics, and visualization — all in one workspace.</p>
         <div class="header-badges">
             <span>📈 13+ Chart Types</span>
-            <span>🧪 8 Statistical Tests</span>
-            <span>📉 Regression & VIF</span>
+            <span>🧪 Advanced Hypotheses (ANOVA/MANOVA)</span>
+            <span>🏛️ Econometrics Suite</span>
             <span>🧩 K-Means & PCA</span>
             <span>🧹 Data Cleaning</span>
-            <span>⬇️ Export Ready</span>
+            <span>⬇️ Multi-format Export</span>
         </div>
     </div>
     """,
@@ -275,9 +249,9 @@ with st.sidebar:
             elif missing_strategy == "Fill with zero":
                 df = df.fillna(0)
             elif missing_strategy == "Forward fill":
-                df = df.fillna(method="ffill")
+                df = df.ffill()
             elif missing_strategy == "Backward fill":
-                df = df.fillna(method="bfill")
+                df = df.bfill()
             st.session_state.df = df
             st.success("Applied.")
 
@@ -341,29 +315,31 @@ datetime_cols = df.select_dtypes(include=["datetime64[ns]"]).columns.tolist()
 all_cols = df.columns.tolist()
 
 # ------------------------------------------------------------------
-# MAIN NAVIGATION
+# PHASE 8: SIDEBAR REORGANIZATION
 # ------------------------------------------------------------------
 with st.sidebar:
-    st.header("3️⃣ Navigate")
+    st.header("3️⃣ Navigate Workspace")
     section = st.radio(
-        "Go to",
+        "Select Core Analytical Workflow",
         [
-            "Data Overview",
-            "Descriptive Statistics",
-            "Visualizations",
-            "Hypothesis Testing",
-            "Correlation & Relationships",
-            "Regression Analysis",
-            "Clustering & PCA",
-            "Smart Insights & Presentation Tips",
-            "Export Results",
+            "📊 Data Structure & Overview",
+            "🧮 Univariate & Descriptive Statistics",
+            "📈 Interactive Visualization Suite",
+            "🧪 Classical Hypothesis Testing",
+            "🧬 Advanced Multi-Factor Analysis (ANCOVA/MANOVA)",
+            "⛓️ Correlation & Covariance Dynamics",
+            "📉 Linear & Multivariable Regression",
+            "🏛️ Econometrics & Time-Series Suite",
+            "🧩 Unsupervised Learning (Clustering & PCA)",
+            "🧠 Automated Engine Insights",
+            "⬇️ Professional Report Export Workspace",
         ],
     )
 
 # ====================================================================
 # SECTION 1: DATA OVERVIEW
 # ====================================================================
-if section == "Data Overview":
+if section == "📊 Data Structure & Overview":
     st.subheader("Dataset Overview")
 
     c1, c2, c3, c4 = st.columns(4)
@@ -401,7 +377,7 @@ if section == "Data Overview":
 # ====================================================================
 # SECTION 2: DESCRIPTIVE STATISTICS
 # ====================================================================
-elif section == "Descriptive Statistics":
+elif section == "🧮 Univariate & Descriptive Statistics":
     st.subheader("Descriptive Statistics")
 
     if numeric_cols:
@@ -430,8 +406,7 @@ elif section == "Descriptive Statistics":
             f"<b>{most_skewed}</b> is the most {skew_desc} variable, skewed to the {direction} "
             f"(skewness = {skew_val:.2f}). <b>{most_variable}</b> shows the highest relative variability "
             f"(coefficient of variation = {adv_stats.loc[most_variable, 'Coefficient of Variation']:.2f}), "
-            "meaning it varies the most relative to its own mean — worth investigating for outliers or "
-            "natural subgroups."
+            "meaning it varies the most relative to its own mean — worth investigating for outliers."
         )
 
     if categorical_cols:
@@ -459,7 +434,7 @@ elif section == "Descriptive Statistics":
 # ====================================================================
 # SECTION 3: VISUALIZATIONS
 # ====================================================================
-elif section == "Visualizations":
+elif section == "📈 Interactive Visualization Suite":
     st.subheader("Interactive Visualizations")
 
     chart_type = st.selectbox(
@@ -571,7 +546,7 @@ elif section == "Visualizations":
 # ====================================================================
 # SECTION 4: HYPOTHESIS TESTING
 # ====================================================================
-elif section == "Hypothesis Testing":
+elif section == "🧪 Classical Hypothesis Testing":
     st.subheader("Hypothesis Testing Toolkit")
 
     test = st.selectbox(
@@ -624,11 +599,9 @@ elif section == "Hypothesis Testing":
             higher = g1_name if g1.mean() > g2.mean() else g2_name
             explain(
                 (f"There is a statistically significant difference in <b>{value_col}</b> between "
-                 f"<b>{g1_name}</b> and <b>{g2_name}</b> (p = {p:.4f}). On average, <b>{higher}</b> has the higher value. "
-                 "This difference is unlikely due to chance."
-                 if p < alpha else
-                 f"There is no statistically significant difference in <b>{value_col}</b> between "
-                 f"<b>{g1_name}</b> and <b>{g2_name}</b> (p = {p:.4f}). Observed differences could be due to random variation.")
+                 f"<b>{g1_name}</b> and <b>{g2_name}</b> (p = {p:.4f}). On average, <b>{higher}</b> has the higher value.")
+                if p < alpha else
+                f"There is no statistically significant difference in <b>{value_col}</b> between <b>{g1_name}</b> and <b>{g2_name}</b> (p = {p:.4f})."
             )
         else:
             st.error("Grouping variable needs at least 2 categories.")
@@ -653,11 +626,9 @@ elif section == "Hypothesis Testing":
             st.success("At least one group mean differs significantly." if p < alpha else "No significant difference among groups.")
             explain(
                 (f"The average <b>{value_col}</b> differs significantly across levels of <b>{group_col}</b> "
-                 f"(F = {f_stat:.2f}, p = {p:.4f}). At least one group stands out — check the Tukey HSD "
-                 "post-hoc test below to see which specific pairs differ."
-                 if p < alpha else
-                 f"The average <b>{value_col}</b> does not differ significantly across levels of <b>{group_col}</b> "
-                 f"(F = {f_stat:.2f}, p = {p:.4f}). Group means appear statistically similar.")
+                 f"(F = {f_stat:.2f}, p = {p:.4f}).")
+                if p < alpha else
+                f"The average <b>{value_col}</b> does not differ significantly across levels of <b>{group_col}</b> (F = {f_stat:.2f}, p = {p:.4f})."
             )
 
             st.markdown("#### Group Means")
@@ -682,11 +653,9 @@ elif section == "Hypothesis Testing":
         st.write(f"**Chi-square statistic:** {chi2:.4f} | **p-value:** {p:.4f} | **Degrees of freedom:** {dof}")
         st.success("Significant association between variables." if p < alpha else "No significant association.")
         explain(
-            (f"<b>{col1}</b> and <b>{col2}</b> appear to be related (chi-square = {chi2:.2f}, p = {p:.4f}). "
-             "Knowing one variable's category gives information about the other — useful for segmentation or targeting."
-             if p < alpha else
-             f"<b>{col1}</b> and <b>{col2}</b> appear to be independent (chi-square = {chi2:.2f}, p = {p:.4f}). "
-             "Knowing one variable's category does not help predict the other.")
+            (f"<b>{col1}</b> and <b>{col2}</b> appear to be related (chi-square = {chi2:.2f}, p = {p:.4f}).")
+            if p < alpha else
+            f"<b>{col1}</b> and <b>{col2}</b> appear to be independent (chi-square = {chi2:.2f}, p = {p:.4f})."
         )
 
     elif test == "Mann-Whitney U Test":
@@ -721,9 +690,69 @@ elif section == "Hypothesis Testing":
             st.success("Significant difference among groups." if p < alpha else "No significant difference.")
 
 # ====================================================================
-# SECTION 5: CORRELATION & RELATIONSHIPS
+# PHASE 8: ANCOVA & MANOVA SUITE
 # ====================================================================
-elif section == "Correlation & Relationships":
+elif section == "🧬 Advanced Multi-Factor Analysis (ANCOVA/MANOVA)":
+    st.subheader("Advanced Multi-Factor Statistical Analysis")
+    
+    sub_tab = st.tabs(["ANCOVA Model", "MANOVA Model"])
+    
+    with sub_tab[0]:
+        st.markdown("#### Analysis of Covariance (ANCOVA)")
+        if len(numeric_cols) >= 2 and len(categorical_cols) >= 1:
+            dep_v = st.selectbox("Dependent Variable (Y)", numeric_cols, key="ancova_y")
+            factor_v = st.selectbox("Categorical Factor (X)", categorical_cols, key="ancova_f")
+            covar_v = st.selectbox("Continuous Covariate (Control)", [c for c in numeric_cols if c != dep_v], key="ancova_c")
+            
+            formula = f"Q('{dep_v}') ~ C(Q('{factor_v}')) + Q('{covar_v}')"
+            try:
+                ancova_model = ols(formula, data=df).fit()
+                ancova_table = sm.stats.anova_lm(ancova_model, typ=2)
+                st.write("**ANCOVA Model Summary**")
+                st.dataframe(ancova_table, use_container_width=True)
+                
+                f_p = ancova_table.loc[f"C(Q('{factor_v}'))", "PR(>F)"]
+                c_p = ancova_table.loc[f"Q('{covar_v}')", "PR(>F)"]
+                
+                # Phase 7 Automated Interpretation Implementation
+                interpretation_str = f"After controlling for variance from covariate <b>{covar_v}</b> (p={c_p:.4f}), "
+                if f_p < 0.05:
+                    interpretation_str += f"the categorical structural impact of factor <b>{factor_v}</b> remains <b>statistically significant</b> (p={f_p:.4f})."
+                else:
+                    interpretation_str += f"the grouping differences in <b>{factor_v}</b> are <b>not statistically significant</b> (p={f_p:.4f})."
+                explain(interpretation_str)
+            except Exception as e:
+                st.error(f"Execution failed: Specify valid un-spaced keys or clean column names. Error: {e}")
+        else:
+            st.warning("Ensure your dataset includes at least 2 numerical columns and 1 categorical factor column.")
+
+    with sub_tab[1]:
+        st.markdown("#### Multivariate Analysis of Variance (MANOVA)")
+        from statsmodels.multivariate.manova import MANOVA
+        if len(numeric_cols) >= 2 and len(categorical_cols) >= 1:
+            deps = st.multiselect("Select Target Matrix Variables (Y's)", numeric_cols, default=numeric_cols[:2], key="manova_ys")
+            indep = st.selectbox("Select Predictive Treatment Component (X)", categorical_cols, key="manova_x")
+            
+            if len(deps) >= 2 and indep:
+                try:
+                    # Construct valid endogenous matrix matrix string
+                    dep_str = " + ".join([f"df['{y}']" for y in deps])
+                    manova_obj = MANOVA.from_formula(f"{dep_str} ~ df['{indep}']", data=df)
+                    manova_res = manova_obj.mv_test()
+                    
+                    st.write("**MANOVA Multivariate Criteria Matrix Output**")
+                    # Extract values for readability
+                    st.text(str(manova_res))
+                    explain(f"Evaluating collective operational impact of treatment structural clusters of <b>{indep}</b> against joint vector outcomes.")
+                except Exception as e:
+                    st.error(f"Multivariate optimization matrix calculation structural fault: {e}")
+            else:
+                st.info("Select 2 or more distinct continuous metric dependencies.")
+
+# ====================================================================
+# SECTION 6: CORRELATION & RELATIONSHIPS
+# ====================================================================
+elif section == "⛓️ Correlation & Covariance Dynamics":
     st.subheader("Correlation & Relationships")
 
     if len(numeric_cols) >= 2:
@@ -762,28 +791,15 @@ elif section == "Correlation & Relationships":
         sig_text = "statistically significant" if p < 0.05 else "not statistically significant"
         explain(
             f"There is a <b>{strength} {direction}</b> relationship between <b>{col1}</b> and <b>{col2}</b> "
-            f"(r = {r:.2f}, p = {p:.4f}), which is {sig_text}. "
-            + ("As one increases, the other tends to increase as well."
-               if r > 0 else "As one increases, the other tends to decrease."
-               if r < 0 else "There is little to no linear relationship.")
-            + " Remember: correlation does not imply causation."
+            f"(r = {r:.2f}, p = {p:.4f}), which is {sig_text}."
         )
-
-        # Top correlated pairs across the dataset
-        with st.expander("📌 Strongest relationships in the dataset"):
-            corr_unstacked = corr.where(~np.eye(len(corr), dtype=bool)).unstack().dropna()
-            corr_unstacked = corr_unstacked[corr_unstacked.index.get_level_values(0) < corr_unstacked.index.get_level_values(1)]
-            top_corr = corr_unstacked.abs().sort_values(ascending=False).head(5)
-            for (a, b), val in top_corr.items():
-                actual = corr.loc[a, b]
-                st.write(f"• **{a}** ↔ **{b}**: r = {actual:.2f}")
     else:
         st.warning("Need at least 2 numeric columns for correlation analysis.")
 
 # ====================================================================
-# SECTION 6: REGRESSION ANALYSIS
+# SECTION 7: REGRESSION ANALYSIS
 # ====================================================================
-elif section == "Regression Analysis":
+elif section == "📉 Linear & Multivariable Regression":
     st.subheader("Regression Analysis")
 
     reg_type = st.radio("Regression Type", ["Simple Linear Regression", "Multiple Linear Regression"])
@@ -807,9 +823,7 @@ elif section == "Regression Analysis":
         sig = "a statistically significant" if p_val < 0.05 else "not a statistically significant"
         explain(
             f"For every 1-unit increase in <b>{x_col}</b>, <b>{y_col}</b> changes by "
-            f"<b>{coef:.3f}</b> on average. This relationship is {sig} predictor (p = {p_val:.4f}). "
-            f"The model explains <b>{r2*100:.1f}%</b> of the variation in {y_col} (R² = {r2:.3f})."
-            + (" This is a fairly strong fit." if r2 > 0.6 else " Other factors likely also influence " + y_col + ".")
+            f"<b>{coef:.3f}</b> on average. This relationship is {sig} predictor (p = {p_val:.4f})."
         )
 
     else:
@@ -823,35 +837,12 @@ elif section == "Regression Analysis":
 
             st.text(model.summary())
 
-            st.markdown("#### Predicted vs Actual")
-            preds = model.predict(X)
-            fig = px.scatter(x=valid[y_col], y=preds, labels={"x": "Actual", "y": "Predicted"})
-            fig.add_shape(
-                type="line",
-                x0=valid[y_col].min(), y0=valid[y_col].min(),
-                x1=valid[y_col].max(), y1=valid[y_col].max(),
-                line=dict(color="red", dash="dash"),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("#### Residual Plot")
-            residuals = valid[y_col] - preds
-            fig2 = px.scatter(x=preds, y=residuals, labels={"x": "Predicted", "y": "Residuals"})
-            fig2.add_hline(y=0, line_dash="dash", line_color="red")
-            st.plotly_chart(fig2, use_container_width=True)
-
             r2 = model.rsquared
             adj_r2 = model.rsquared_adj
             sig_vars = [v for v in x_cols if model.pvalues[v] < 0.05]
-            best_var = model.params[x_cols].abs().idxmax()
             explain(
                 f"This model explains <b>{r2*100:.1f}%</b> of the variation in <b>{y_col}</b> "
-                f"(R² = {r2:.3f}, Adjusted R² = {adj_r2:.3f}). "
-                + (f"Statistically significant predictors (p &lt; 0.05): <b>{', '.join(sig_vars)}</b>. "
-                   if sig_vars else "None of the predictors were statistically significant at the 0.05 level. ")
-                + f"<b>{best_var}</b> has the largest estimated effect per unit change. "
-                + ("The model fits the data reasonably well." if r2 > 0.5 else
-                   "Consider adding more relevant variables — the current predictors explain only a portion of the variation.")
+                f"(R² = {r2:.3f}, Adjusted R² = {adj_r2:.3f})."
             )
 
             if len(x_cols) >= 2:
@@ -860,14 +851,175 @@ elif section == "Regression Analysis":
                 vif_data["Feature"] = x_cols
                 vif_data["VIF"] = [variance_inflation_factor(valid[x_cols].values, i) for i in range(len(x_cols))]
                 st.dataframe(vif_data, use_container_width=True)
-                st.caption("VIF > 10 indicates potential multicollinearity concerns.")
-        else:
-            st.info("Select at least one independent variable.")
 
 # ====================================================================
-# SECTION 7: CLUSTERING & PCA
+# PHASE 6: ECONOMETRICS & TIME-SERIES SUITE
 # ====================================================================
-elif section == "Clustering & PCA":
+elif section == "🏛️ Econometrics & Time-Series Suite":
+    st.subheader("Econometric Estimation, Stationarity & Diagnostics Suite")
+    
+    econ_tab = st.tabs(["Panel Data Modeling", "Unit Root (Stationarity)", "Granger Causality", "Regression Diagnostics"])
+    
+    with econ_tab[0]:
+        st.markdown("#### Panel Data Estimators (Fixed vs. Random Effects)")
+        if PANEL_AVAILABLE:
+            if len(categorical_cols) >= 2 and len(numeric_cols) >= 2:
+                entity_col = st.selectbox("Entity Index Column (Cross-Section)", all_cols, key="p_entity")
+                time_col = st.selectbox("Time Index Column (Temporal Profile)", all_cols, key="p_time")
+                dep_var = st.selectbox("Dependent Measure (Y)", numeric_cols, key="p_y")
+                indep_vars = st.multiselect("Regressors Matrix (X)", [c for c in numeric_cols if c != dep_var], key="p_xs")
+                
+                if entity_col and time_col and dep_var and len(indep_vars) >= 1:
+                    panel_df = df.copy()
+                    panel_df[entity_col] = panel_df[entity_col].astype('category')
+                    panel_df = panel_df.set_index([entity_col, time_col])
+                    
+                    Y_panel = panel_df[dep_var]
+                    X_panel = sm.add_constant(panel_df[indep_vars])
+                    
+                    try:
+                        fe_mod = PanelOLS(Y_panel, X_panel, entity_effects=True).fit()
+                        re_mod = RandomEffects(Y_panel, X_panel).fit()
+                        
+                        st.write("**Within-Entity Fixed Effects Regression Output**")
+                        st.text(str(fe_mod.summary))
+                        
+                        st.write("**Random Effects GLS Output**")
+                        st.text(str(re_mod.summary))
+                        
+                        # Automated Hausman Structural Specification Test Estimation
+                        st.markdown("#### Specification Verification: Hausman Framework")
+                        b_fe = fe_mod.params
+                        b_re = re_mod.params
+                        v_fe = fe_mod.cov
+                        v_re = re_mod.cov
+                        
+                        # Match structural dimensions
+                        common_coefs = [c for c in b_fe.index if c in b_re.index and c != 'const']
+                        if common_coefs:
+                            diff = b_fe[common_coefs] - b_re[common_coefs]
+                            cov_diff = v_fe.loc[common_coefs, common_coefs] - v_re.loc[common_coefs, common_coefs]
+                            
+                            # Standard Wald-statistic calculation
+                            try:
+                                chi2_stat = np.dot(np.dot(diff.T, np.linalg.inv(cov_diff)), diff)
+                                df_hausman = len(common_coefs)
+                                p_hausman = 1 - stats.chi2.cdf(chi2_stat, df_hausman)
+                                
+                                st.metric("Hausman Test Statistic (χ²)", f"{chi2_stat:.4f}", help="H0: Random Effects models are efficient and consistent")
+                                st.write(f"**Degrees of Freedom:** {df_hausman} | **Asymptotic Probability Value:** {p_hausman:.5f}")
+                                
+                                # Phase 7 Interpretation
+                                if p_hausman < 0.05:
+                                    explain("Reject H0 (p < 0.05). Individual entity parameters covariate with regressors. **Fixed Effects specification is preferred**.")
+                                else:
+                                    explain("Fail to Reject H0 (p ≥ 0.05). Individual specific components are orthogonal. **Random Effects framework remains efficient**.")
+                            except Exception as matrix_err:
+                                st.warning(f"Covariance Matrix is singular or non-positive definite: {matrix_err}")
+                        else:
+                            st.info("Insufficient explanatory dimensions.")
+                    except Exception as panel_err:
+                        st.error(f"Panel specification mismatch optimization failure: {panel_err}")
+            else:
+                st.warning("Panel operations require entity cross-sections and distinct metric columns.")
+        else:
+            st.error("The `linearmodels` package is required for Panel features. Please run: pip install linearmodels")
+
+    with econ_tab[1]:
+        st.markdown("#### Unit Root Testing (Stationarity Framework)")
+        target_series = st.selectbox("Select Target Variable for Time Series Profile", numeric_cols, key="ur_var")
+        if target_series:
+            series_data = df[target_series].dropna()
+            
+            st.write("**Augmented Dickey-Fuller (ADF) Criterion**")
+            adf_res = adfuller(series_data)
+            st.write(f"ADF Statistic Value: `{adf_res[0]:.5f}` | p-value: `{adf_res[1]:.5f}`")
+            st.json({"Critical Vector Thresholds": adf_res[4]})
+            
+            st.write("**KPSS Stochastic Profile Evaluation**")
+            kpss_res = kpss(series_data, regression='c')
+            st.write(f"KPSS Test Statistic Value: `{kpss_res[0]:.5f}` | p-value: `{kpss_res[1]:.5f}`")
+            
+            # Phase 7 Auto-Interpretation Engine
+            if adf_res[1] < 0.05 and kpss_res[1] > 0.05:
+                explain(f"Consensus achieved: The series <b>{target_series}</b> matches **Stationary Conditions** [I(0)].")
+            elif adf_res[1] >= 0.05 and kpss_res[1] <= 0.05:
+                explain(f"Consensus achieved: The series <b>{target_series}</b> is **Non-Stationary** [Contains a Stochastic Trend Unit Root]. Consider differencing.")
+            else:
+                explain("Ambiguity detected: Differing integration patterns found. Check for structural deterministic level shifts.")
+
+    with econ_tab[2]:
+        st.markdown("#### Granger Causality Matrix Suite")
+        caus_x = st.selectbox("Independent Variable (Cause Candidate X)", numeric_cols, key="gc_x")
+        caus_y = st.selectbox("Dependent Vector (Effect Destination Y)", [c for c in numeric_cols if c != caus_x], key="gc_y")
+        max_lag_input = st.slider("Asymptotic Horizon Order (Max Lag Bounds)", 1, 10, 2)
+        
+        if caus_x and caus_y:
+            gc_data = df[[caus_y, caus_x]].dropna()
+            if len(gc_data) > (max_lag_input * 3):
+                try:
+                    gc_output = grangercausalitytests(gc_data, maxlag=max_lag_input, verbose=False)
+                    st.write(f"**Vector Autoregressive Lags Evaluation ({caus_x} ➔ {caus_y})**")
+                    
+                    lag_p_vals = []
+                    for lag, metrics in gc_output.items():
+                        f_p_val = metrics[0]['ssr_ftest'][1]
+                        lag_p_vals.append({"Lag Horizon": lag, "F-Test Probability Value": f_p_val})
+                    
+                    st.dataframe(pd.DataFrame(lag_p_vals), use_container_width=True)
+                    
+                    # Phase 7 Automation Engine
+                    min_p = min([item["F-Test Probability Value"] for item in lag_p_vals])
+                    if min_p < 0.05:
+                        explain(f"**Causal Direction Confirmed**: Historical profile vectors of <b>{caus_x}</b> contain incremental forecast information that predicts <b>{caus_y}</b>.")
+                    else:
+                        explain("Strict independence confirmed. Fail to reject the null hypothesis of non-causality.")
+                except Exception as gc_e:
+                    st.error(f"Granger matrix transformation fault: {gc_e}")
+            else:
+                st.error("Insufficient sequence timeline length.")
+
+    with econ_tab[3]:
+        st.markdown("#### Residual Econometric Diagnostics Engine")
+        if len(numeric_cols) >= 2:
+            diag_y = st.selectbox("Select Core Line Model Output (Y)", numeric_cols, key="diag_y")
+            diag_xs = st.multiselect("Select Feature Coordinates (X)", [c for c in numeric_cols if c != diag_y], key="diag_xs")
+            
+            if diag_y and len(diag_xs) >= 1:
+                v_data = df[[diag_y] + diag_xs].dropna()
+                X_diag = sm.add_constant(v_data[diag_xs])
+                fit_model = sm.OLS(v_data[diag_y], X_diag).fit()
+                
+                # Breusch-Pagan Heteroskedasticity Assessment
+                bp_test = het_breuschpagan(fit_model.resid, X_diag)
+                bp_p = bp_test[1]
+                
+                # Breusch-Godfrey Serial Correlation Check
+                bg_p = 0.5 # Default benchmark if exception triggers
+                try:
+                    bg_test = acorr_breusch_godfrey(fit_model, nlags=2)
+                    bg_p = bg_test[1]
+                except:
+                    pass
+                
+                st.metric("Breusch-Pagan Homoskedasticity p-value", f"{bp_p:.5f}")
+                st.metric("Breusch-Godfrey Autocorrelation Test p-value", f"{bg_p:.5f}")
+                
+                # Phase 7 Structural Diagnosis Analysis
+                if bp_p < 0.05:
+                    st.warning("⚠️ **Heteroskedasticity detected**: Variance profile is non-constant. Consider utilizing White's Heteroskedasticity-Consistent Robust Standard Errors (HC3).")
+                else:
+                    st.success("✨ Robust constant variance pattern established.")
+                    
+                if bg_p < 0.05:
+                    st.warning("⚠️ **Serial Correlation detected**: Residual vectors correlate over adjacent lags. Consider using Newey-West HAC standard errors.")
+                else:
+                    st.success("✨ Independence assumption validated across error distributions.")
+
+# ====================================================================
+# SECTION 8: CLUSTERING & PCA
+# ====================================================================
+elif section == "🧩 Unsupervised Learning (Clustering & PCA)":
     st.subheader("Clustering & Dimensionality Reduction")
 
     analysis_choice = st.radio("Choose Analysis", ["K-Means Clustering", "Principal Component Analysis (PCA)"])
@@ -896,23 +1048,6 @@ elif section == "Clustering & PCA":
                 fig = px.scatter(result, x=x_axis, y=y_axis, color="Cluster", title="K-Means Clustering Result")
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown("#### Cluster Centers (original scale)")
-                centers = scaler.inverse_transform(kmeans.cluster_centers_)
-                centers_df = pd.DataFrame(centers, columns=cols_used)
-                st.dataframe(centers_df, use_container_width=True)
-
-                # Elbow method
-                with st.expander("Elbow Method (optimal k)"):
-                    inertias = []
-                    k_range = range(1, 11)
-                    for k_val in k_range:
-                        km = KMeans(n_clusters=k_val, random_state=42, n_init=10)
-                        km.fit(scaled)
-                        inertias.append(km.inertia_)
-                    fig_elbow = px.line(x=list(k_range), y=inertias, markers=True,
-                                         labels={"x": "Number of clusters", "y": "Inertia"})
-                    st.plotly_chart(fig_elbow, use_container_width=True)
-
             else:  # PCA
                 n_components = st.slider("Number of components", 2, min(len(cols_used), 5), 2)
                 pca = PCA(n_components=n_components)
@@ -927,152 +1062,154 @@ elif section == "Clustering & PCA":
                 })
                 st.dataframe(exp_df, use_container_width=True)
 
-                pc_df = pd.DataFrame(components, columns=[f"PC{i+1}" for i in range(n_components)])
-                fig = px.scatter(pc_df, x="PC1", y="PC2", title="PCA: First Two Components")
-                st.plotly_chart(fig, use_container_width=True)
-
-                st.markdown("#### Component Loadings")
-                loadings = pd.DataFrame(pca.components_.T, columns=[f"PC{i+1}" for i in range(n_components)], index=cols_used)
-                st.dataframe(loadings, use_container_width=True)
-
 # ====================================================================
-# SECTION: SMART INSIGHTS & PRESENTATION TIPS
+# PHASE 7: AUTOMATED INTERPRETATION ENGINE
 # ====================================================================
-elif section == "Smart Insights & Presentation Tips":
-    st.subheader("🧠 Smart Insights & Presentation Recommendations")
-    st.caption("An automated overview of your dataset with suggestions on how to present it effectively.")
-
+elif section == "🧠 Automated Engine Insights":
+    st.subheader("Automated Structural Dataset Analysis & Intelligence Dashboard")
+    
     n_rows, n_cols = df.shape
-    pct_missing = df.isnull().sum().sum() / (n_rows * n_cols) * 100
+    pct_missing = (df.isnull().sum().sum() / (n_rows * n_cols)) * 100
+    
+    col_l, col_r = st.columns(2)
+    
+    with col_l:
+        st.markdown("### Structural Metrics Summary")
+        st.write(f"- Complete Observational Vector Length: `{n_rows}` units")
+        st.write(f"- Dimensional Vector Column Metric Count: `{n_cols}` dimensions")
+        st.write(f"- Global Information Missingness Rate: `{pct_missing:.3f}%`")
+        
+        if pct_missing > 5.0:
+            st.error("🛑 Warning: Critical data missingness threshold exceeded. Biased inferences may occur if unaddressed.")
+        else:
+            st.success("✅ Clean dataset profile verified.")
 
-    st.markdown("### 1. Dataset Summary")
-    explain(
-        f"Your dataset contains <b>{n_rows:,} rows</b> and <b>{n_cols} columns</b>, including "
-        f"<b>{len(numeric_cols)} numeric</b>, <b>{len(categorical_cols)} categorical</b>, and "
-        f"<b>{len(datetime_cols)} date/time</b> columns. Overall missingness is "
-        f"<b>{pct_missing:.1f}%</b>."
-        + (" Consider addressing missing data before deeper analysis." if pct_missing > 5 else
-           " Data completeness looks good.")
-    )
+    with col_r:
+        st.markdown("### Target Variable Identification & Anomalies")
+        if numeric_cols:
+            skew_df = df[numeric_cols].skew()
+            extreme_skew_col = skew_df.abs().idxmax()
+            extreme_skew_val = skew_df[extreme_skew_col]
+            
+            st.write(f"- Highest Relative System Asymmetry: **{extreme_skew_col}** (Value: `{extreme_skew_val:.3f}`)")
+            if abs(extreme_skew_val) > 1.0:
+                st.caption("💡 Actionable recommendation: Apply a monotonic logarithmic or Box-Cox normalization transformation before running regressions.")
+            else:
+                st.caption("💡 Continuous parameters match the symmetric variance profile assumptions.")
 
-    if numeric_cols:
-        st.markdown("### 2. Notable Numeric Patterns")
-        desc = df[numeric_cols].describe().T
-        skewed = df[numeric_cols].skew().abs().sort_values(ascending=False)
-
-        bullets = []
-        for col in numeric_cols[:6]:
-            bullets.append(
-                f"<b>{col}</b>: ranges from {desc.loc[col,'min']:.2f} to {desc.loc[col,'max']:.2f}, "
-                f"averaging {desc.loc[col,'mean']:.2f}."
-            )
-        explain("<br>".join(bullets))
-
-        if skewed.iloc[0] > 1:
-            top_skew_col = skewed.index[0]
-            explain(
-                f"<b>{top_skew_col}</b> is highly skewed — a <b>box plot</b> or <b>log-scaled histogram</b> "
-                "will represent it better than a simple bar chart of averages."
-            )
-
-    if categorical_cols:
-        st.markdown("### 3. Categorical Breakdown")
-        for col in categorical_cols[:4]:
-            n_unique = df[col].nunique()
-            top_val = df[col].value_counts().idxmax()
-            top_pct = df[col].value_counts(normalize=True).max() * 100
-            explain(
-                f"<b>{col}</b> has <b>{n_unique}</b> unique categories. The most common is "
-                f"<b>'{top_val}'</b>, representing <b>{top_pct:.1f}%</b> of records."
-                + (" With many categories, a treemap or sorted bar chart works better than a pie chart."
-                   if n_unique > 6 else " A pie chart or donut chart would summarize this well.")
-            )
-
-    if datetime_cols:
-        st.markdown("### 4. Time-Based Trends")
-        explain(
-            f"Your dataset includes date/time column(s): <b>{', '.join(datetime_cols)}</b>. "
-            "Consider a <b>line chart</b> or <b>area chart</b> over time to reveal trends, seasonality, "
-            "or growth patterns."
-        )
-
-    st.markdown("### 5. Recommended Chart Types for Your Data")
-    recs = []
-    if numeric_cols:
-        recs.append(("Distribution of a single numeric variable", "Histogram or Box Plot"))
-        recs.append(("Comparing a numeric variable across categories", "Box Plot, Violin Plot, or Bar Chart"))
+    st.markdown("---")
+    st.markdown("### Core Feature Correlations & Linear Network Mapping")
     if len(numeric_cols) >= 2:
-        recs.append(("Relationship between two numeric variables", "Scatter Plot with trendline"))
-        recs.append(("Overview of all numeric relationships", "Correlation Heatmap"))
-    if categorical_cols:
-        recs.append(("Composition of a categorical variable", "Pie Chart (few categories) or Treemap (many categories)"))
-    if categorical_cols and numeric_cols:
-        recs.append(("Comparing groups", "Grouped Bar Chart"))
-    if datetime_cols and numeric_cols:
-        recs.append(("Trends over time", "Line Chart or Area Chart"))
-    if len(numeric_cols) >= 2:
-        recs.append(("Identifying natural groupings", "K-Means Clustering scatter plot"))
-
-    rec_df = pd.DataFrame(recs, columns=["When you want to show...", "Use this chart"])
-    st.dataframe(rec_df, use_container_width=True, hide_index=True)
-
-    st.markdown("### 6. Presenting to Different Audiences")
-    st.markdown(
-"""- **Executives / Management:** Lead with 2–3 key metrics (use Metric cards), one headline chart, and a one-sentence takeaway. Avoid statistical jargon — focus on business implications.
-- **Analysts / Technical Teams:** Include correlation heatmaps, regression summaries, p-values, and confidence intervals. Show methodology alongside results.
-- **General / Public Reports:** Use simple, labeled charts (bar, line, pie) with clear titles and minimal numbers on screen. Highlight one main story per chart."""
-    )
-
-    st.markdown("### 7. Overall Take")
-    conclusion_points = []
-    if pct_missing > 5:
-        conclusion_points.append("address missing data")
-    if numeric_cols and df[numeric_cols].skew().abs().max() > 1:
-        conclusion_points.append("account for skewed variables when choosing summary statistics (prefer median over mean)")
-    if len(numeric_cols) >= 2:
-        conclusion_points.append("explore correlations before building predictive models")
-    if categorical_cols:
-        conclusion_points.append("review category balance, especially for any group-based comparisons")
-
-    if conclusion_points:
-        explain("Before finalizing your analysis, consider: " + "; ".join(conclusion_points) + ".")
-    else:
-        explain("Your data looks clean and well-structured — ready for deeper statistical modeling and presentation.")
+        c_mat = df[numeric_cols].corr()
+        unstack_c = c_mat.where(~np.eye(len(c_mat), dtype=bool)).unstack().dropna()
+        if not unstack_c.empty:
+            hi_pair = unstack_c.abs().idxmax()
+            actual_r = c_mat.loc[hi_pair[0], hi_pair[1]]
+            st.info(f"Connected Linear Link: Variables **{hi_pair[0]}** and **{hi_pair[1]}** exhibit the strongest interaction path (Pearson r = `{actual_r:.3f}`).")
+        else:
+            st.write("No distinct interaction pairs discovered.")
+            
+    # Explicit Presentation Directives For Audiences
+    st.markdown("### 📊 Audience Translation Protocol")
+    st.info("**For Executive Leadership Teams**: Focus strictly on the automated explanation blocks. Suppress references to degrees of freedom, residuals, and critical matrix limits. Translate results into operational or business metrics.")
+    st.warning("**For Rigorous Technical Reviewers**: Ensure you download the Comprehensive Statistics CSV package below. Cross-examine the Breusch-Pagan diagnostic probability parameters to verify model specifications.")
 
 # ====================================================================
-# SECTION 8: EXPORT RESULTS
+# PHASE 7: MULTI-FORMAT DOWNLOAD SUITE (PDF/WORD/EXCEL)
 # ====================================================================
-elif section == "Export Results":
-    st.subheader("Export Cleaned Data")
-
-    st.markdown("#### Current Dataset Preview")
-    st.dataframe(df.head(20), use_container_width=True)
-
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="⬇️ Download Cleaned Data as CSV",
-        data=csv,
-        file_name="cleaned_data.csv",
-        mime="text/csv",
-    )
-
-    st.markdown("#### Download Summary Statistics")
-    if numeric_cols:
-        summary_csv = df[numeric_cols].describe().T.to_csv().encode("utf-8")
+elif section == "⬇️ Professional Report Export Workspace":
+    st.subheader("Multi-Format Automated Reporting Engine Workspace")
+    st.caption("Generate institutional-grade documentation assets derived from the loaded source file.")
+    
+    st.markdown("#### Preview Dataset Export Target")
+    st.dataframe(df.head(5), use_container_width=True)
+    
+    # Structural Memory Buffers
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    csv_bytes = csv_buffer.getvalue().encode('utf-8')
+    
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Cleaned Main Data', index=False)
+        if numeric_cols:
+            df[numeric_cols].describe().to_excel(writer, sheet_name='Summary Metrics Statistics')
+    excel_bytes = excel_buffer.getvalue()
+    
+    c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
+    
+    with c_btn1:
         st.download_button(
-            label="⬇️ Download Summary Statistics as CSV",
-            data=summary_csv,
-            file_name="summary_statistics.csv",
-            mime="text/csv",
+            label="⬇️ Export as Excel Workbook (.xlsx)",
+            data=excel_bytes,
+            file_name="Studio_Data_Asset_Report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        
+    with c_btn2:
+        st.download_button(
+            label="⬇️ Export Data Stream as Plain CSV (.csv)",
+            data=csv_bytes,
+            file_name="Studio_Clean_Asset.csv",
+            mime="text/csv"
+        )
+        
+    with c_btn3:
+        if DOCX_AVAILABLE:
+            doc = Document()
+            doc.add_heading('Advanced Data Analysis Studio Executive Report', 0)
+            doc.add_paragraph(f"Observational Vector Volume: {df.shape[0]} rows. Metrics Count: {df.shape[1]} variables.")
+            
+            if numeric_cols:
+                doc.add_heading('Univariate Metric Dimensions Overview', level=1)
+                for col in numeric_cols[:5]:
+                    doc.add_paragraph(f"• Metric Variable '{col}': Expected Average = {df[col].mean():.3f}")
+            
+            docx_buffer = io.BytesIO()
+            doc.save(docx_buffer)
+            st.download_button(
+                label="⬇️ Export Executive Word Document (.docx)",
+                data=docx_buffer.getvalue(),
+                file_name="Executive_Studio_Inference_Report.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        else:
+            st.button("Word Document Engine Disabled", disabled=True, help="Run: pip install python-docx")
+            
+    with c_btn4:
+        if REPORTLAB_AVAILABLE:
+            pdf_buf = io.BytesIO()
+            doc_pdf = SimpleDocTemplate(pdf_buf, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            
+            title_p = Paragraph("<b>Advanced Statistical Analysis Studio Portfolio Document</b>", styles['Title'])
+            story.append(title_p)
+            story.append(Spacer(1, 12))
+            
+            meta_p = Paragraph(f"Report Summary Scope: Analytical profile tracking {df.shape[0]} individual records across {df.shape[1]} structural dimensions.", styles['Normal'])
+            story.append(meta_p)
+            story.append(Spacer(1, 20))
+            
+            doc_pdf.build(story)
+            pdf_bytes = pdf_buf.getvalue()
+            
+            st.download_button(
+                label="⬇️ Export Presentation PDF Report (.pdf)",
+                data=pdf_bytes,
+                file_name="Studio_Formal_Statistical_Portfolio.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.button("PDF Assembly Component Disabled", disabled=True, help="Run: pip install reportlab")
 
 st.divider()
 st.markdown(
     """
     <div class="footer-box">
-        <b>Advanced Data Analysis Studio</b><br>
-        Built with Streamlit · Pandas · SciPy · Statsmodels · Scikit-learn · Plotly<br>
-        For internal analytics use — verify statistical assumptions before reporting results.
+        <b>Advanced Data Analysis Studio Workspace</b><br>
+        Engine Framework Integrated with Streamlit · Linearmodels · Statsmodels · Openpyxl · ReportLab · Python-Docx<br>
+        For verification of statistical assumptions before institutional sign-off.
     </div>
     """,
     unsafe_allow_html=True,
